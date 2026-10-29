@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;background:#f6f7f8;margin:0;color:#161616}
+.app{max-width:760px;margin:auto;padding:16px}.panel,.card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:12px}
+h1{font-size:24px;margin:0 0 4px}h3{margin:0 0 6px}.sub,.meta{color:#6b7280;font-size:13px}.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chip{background:#f3f4f6;border-radius:999px;padding:6px 10px;font-size:12px}.red{background:#fee2e2}.amber{background:#fef3c7}.green{background:#dcfce7}
+.card.current{border:2px solid #111827}.top{display:flex;justify-content:space-between;gap:10px}.title{font-weight:700;font-size:17px;margin:6px 0}
+button{border:0;border-radius:10px;padding:9px 12px;background:#111827;color:#fff;cursor:pointer}.secondary{background:#eef0f3;color:#111}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.details{display:none;margin-top:12px;padding-top:12px;border-top:1px solid #eee}.card.open .details{display:block}
+.result{background:#f8fafc;padding:10px;border-radius:10px;margin-top:6px}
+</style>
+</head>
+<body><div id="root"></div>
+<script>
+let data={dateLabel:"Сегодня",summary:{urgent:0,remaining:0,risk:0,loadMinutes:0,capacityMinutes:420},items:[]};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const mins=n=>!n?"":(n>=60?(Math.floor(n/60)+" ч "+(n%60?n%60+" мин":"")):n+" мин");
+
+function send(action,payload={}) {
+  const text="SERGEY_UI_ACTION "+JSON.stringify({action,...payload});
+  if(window.openai?.sendFollowUpMessage) window.openai.sendFollowUpMessage({prompt:text});
+}
+
+function render(){
+  const s=data.summary||{};
+  root.innerHTML='<div class="app">'+
+    '<section class="panel"><h1>День Сергея</h1><div class="sub">'+esc(data.dateLabel)+(data.updatedAt?' · обновлено '+esc(data.updatedAt):'')+'</div>'+
+    '<div class="chips"><span class="chip red">Срочных '+(s.urgent||0)+'</span><span class="chip">Осталось '+(s.remaining||0)+'</span><span class="chip amber">Риск '+(s.risk||0)+'</span><span class="chip">'+mins(s.loadMinutes||0)+' / '+mins(s.capacityMinutes||420)+'</span></div>'+
+    '<div class="actions"><button onclick="send(\'refresh_day\',{date:data.date})">Обновить</button><button class="secondary" onclick="send(\'close_day\',{date:data.date})">Закрыть день</button></div></section>'+
+    data.items.map(item=>{
+      if(item.kind==="service") return '<div class="panel meta">'+esc(item.start||'')+(item.end?'–'+esc(item.end):'')+' · '+esc(item.title)+'</div>';
+      const cur=item.id===data.currentTaskId?' current':'';
+      return '<section class="card'+cur+'" data-id="'+esc(item.id||'')+'"><div class="top"><div><div class="meta">'+esc(item.start||'')+(item.end?'–'+esc(item.end):'')+(item.priority?' · '+esc(item.priority):'')+'</div><div class="title">'+esc(item.title)+'</div><div class="meta">'+esc(item.id||'')+(item.people?.length?' · '+esc(item.people.join(" · ")):'')+'</div></div><button class="secondary" onclick="toggle(this)">⌄</button></div>'+
+      '<div class="chips"><span class="chip">'+esc(item.statusLabel||item.status||"Не начато")+'</span>'+(item.remainingMinutes?'<span class="chip amber">ещё '+mins(item.remainingMinutes)+'</span>':'')+(item.risk?'<span class="chip red">'+esc(item.risk)+'</span>':'')+'</div>'+
+      '<div class="details">'+(item.expectedResult?'<div class="meta">Ожидаемый результат</div><div class="result">'+esc(item.expectedResult)+'</div>':'')+
+      '<div class="actions"><button onclick="send(\'set_task_completed\',{id:\''+esc(item.id||'')+'\'})">Готово</button><button class="secondary" onclick="send(\'set_task_in_progress\',{id:\''+esc(item.id||'')+'\'})">В процессе</button><button class="secondary" onclick="send(\'postpone_task\',{id:\''+esc(item.id||'')+'\'})">Перенос</button></div></div></section>';
+    }).join('')+'</div>';
+}
+function toggle(btn){btn.closest(".card").classList.toggle("open")}
+window.addEventListener("message",e=>{
+  const m=e.data;
+  if(m?.method==="ui/notifications/tool-result"&&m.params?.structuredContent){data=m.params.structuredContent;render()}
+});
+render();
+</script></body></html>
